@@ -2,7 +2,9 @@
 <format-tree>
 	<branch format="Tagged Image File Format">
 		<branch format="Digital Negative (DNG)"/>
-		  <branch format="TIFF DLF Benchmark for Faithful Digital Reproductions of Monographs and Serials: color" />
+		    <branch format="TIFF DLF Benchmark for Faithful Digital Reproductions of Monographs and Serials: color" />
+            <branch format="TIFF EXIF" />
+            <branch format="TIFF TIFF/IT-MP (ISO 12639:1998)" />
 	</branch>
 	<branch format="Raw JPEG Stream">
 		<branch format="jpeg">
@@ -15,10 +17,7 @@
 		<branch format="JPEG 2000 JPX"/>
 	</branch>
 	<branch format="Portable Document Format">
-		<branch format="Adobe Illustrator"/>
-		<branch format="PDF/A">
-			<branch format="Adobe Illustrator"/>
-		</branch>
+		<branch format="PDF/A"/>
 		<branch format="PDF/X"/>
 	</branch>
 	<branch format="Plain text">
@@ -27,6 +26,7 @@
 		</branch>
 		<branch format="Hypertext Markup Language"/>
 		<branch format="Postscript"/>
+		<branch format="WebVTT"/>		
 	</branch>
 	<branch format="ZIP Format">
 		<branch format="OpenDocument"/>
@@ -46,6 +46,13 @@
 		<branch format="OpenDocument Formula"/>
 		<branch format="OpenDocument Formula Template"/>
 		<branch format="OpenDocument Master Document"/>
-		<branch format="OpenDocument HTML Document Template"/>	
+		<branch format="OpenDocument HTML Document Template"/>
+		<branch format="EPUB"/>
+        <branch format="Office Open XML Document">
+            <branch format="Office Open XML Document (Macros Enabled)" />
+        </branch>
+	</branch>
+	<branch format="OLE2 Compound Document Format">
+	   <branch format="Microsoft Word Binary File Format" />
 	</branch>
 </format-tree>

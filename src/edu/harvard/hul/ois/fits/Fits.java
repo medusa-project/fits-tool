@@ -21,12 +21,14 @@ package edu.harvard.hul.ois.fits;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Properties;
 
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamException;
@@ -49,6 +51,7 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.XMLConfiguration;
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.jdom.Document;
 import org.jdom.output.Format;
@@ -72,8 +75,9 @@ public class Fits {
   private static Logger logger;
 
   public static volatile String FITS_HOME;
-  public static String FITS_XML;
-  public static String FITS_TOOLS;
+  public static String FITS_XML_DIR;
+  public static String FITS_TOOLS_DIR;
+  public static String FITS_LIB_DIR;
   public static XMLConfiguration config;
   public static FitsXmlMapper mapper;
   public static boolean validateToolOutput;
@@ -82,58 +86,89 @@ public class Fits {
   public static String internalOutputSchema;
   public static int maxThreads = 20; // GDM 16-Nov-2012
   public static final String XML_NAMESPACE = "http://hul.harvard.edu/ois/xml/ns/fits/fits_output";
+  public static String VERSION = "<unknown>";
 
-  public static String VERSION = "0.8.3";
-
+  private static final String FITS_CONFIG_FILE_NAME = "fits.xml";
+  private static String VERSION_PROPERTIES_FILE = "version.properties";
   private ToolOutputConsolidator consolidator;
   private static XMLOutputFactory xmlOutputFactory = XMLOutputFactory.newInstance();
   private ToolBelt toolbelt;
+  private boolean resetToolOutput = true; // should always be true except for unit tests
 
   private static boolean traverseDirs;
+  
+  
+    static {
+        // set FITS_HOME from environment variable if it exists
+        FITS_HOME = System.getenv( "FITS_HOME" );
+        if ( StringUtils.isEmpty(FITS_HOME) ) {
+            // if not set use the current directory
+            FITS_HOME = "";
+        }
+    }
 
-  public Fits() throws FitsException {
+  /**
+   * Default, no-arg constructor. FITS configuration file expected in default location with
+   * FITS_HOME either default location or set by environment variable.
+   * 
+   * @throws FitsConfigurationException If there is a problem configuring FITS.
+   */
+  public Fits() throws FitsConfigurationException {
     this( null );
   }
 
+  /**
+   * Constructor with path to FITS alternate .
+   * 
+   * @param fits_home Full path to home directory of FITS installation.
+   *        NOTE: If FITS_HOME set as environment variable this argument has no effect.
+   * @throws FitsConfigurationException If there is a problem configuring FITS.
+   */
   public Fits( String fits_home ) throws FitsConfigurationException {
+	  this( fits_home, null );
+  }
 
-    // Set BB_HOME dir with environment variable
-    FITS_HOME = System.getenv( "FITS_HOME" );
-    if (FITS_HOME == null) {
+  /**
+   * Constructor with alternate FITS_HOME and alternate FITS configuration file.
+   * 
+   * @param fits_home Full path to home directory of FITS installation.
+   *        NOTE: If FITS_HOME set as environment variable this argument has no effect.
+   * @param fitsXmlConfig File containing FITS configuration.
+   * @throws FitsConfigurationException If there is a problem configuring FITS.
+   */
+  public Fits( String fits_home, File fitsXmlConfig ) throws FitsConfigurationException {
+
+	  // NOTE: a "FITS_HOME" environment variable (see initial static block of this class)
+	  // "wins" over a FITS home value passed into the constructor.
+    if ( StringUtils.isEmpty(FITS_HOME) ) {
       // if env variable not set check for fits_home passed into constructor
       if (fits_home != null) {
         FITS_HOME = fits_home;
-      } else {
-        // if fits_home is still not set use the current directory
-        FITS_HOME = "";
       }
     }
+    
+    setFitsVersionFromFile();
 
-    // If fits home is not an empty string and doesn't send with a file
-    // separator character, add one
-    if (FITS_HOME.length() > 0 && !FITS_HOME.endsWith( File.separator )) {
-      FITS_HOME = FITS_HOME + File.separator;
-    }
-
-    FITS_XML = FITS_HOME + "xml" + File.separator;
-    FITS_TOOLS = FITS_HOME + "tools" + File.separator;
+    FITS_XML_DIR = FITS_HOME + "xml" + File.separator;
+    FITS_TOOLS_DIR = FITS_HOME + "tools" + File.separator;
+    FITS_LIB_DIR = FITS_HOME + "lib" + File.separator;
 
     // Set up logging.
     // Now using an explicit properties file, because otherwoise DROID will
     // hijack it, and it's cleaner this way anyway.
-    
-    //(SM 1/2/14 -- Note that this statement probably isn't doing what the author intended.
-    //  If log4j.debug=true is set then it shows that this doesn't actually find the specified
-    //  log4j.properties file.  Leaving as is for now since overall logging works as intended.
-    //  also note that any logging statements in this class probably do not work.
-    System.setProperty( "log4j.configuration", FITS_TOOLS + "log4j.properties" );
-
+    File log4jProperties = new File(FITS_HOME + "log4j.properties");
+    System.setProperty( "log4j.configuration", log4jProperties.toURI().toString());
+ 
     logger = Logger.getLogger( this.getClass() );
     try {
-      config = new XMLConfiguration( FITS_XML + "fits.xml" );
+      if ( fitsXmlConfig != null ) {
+          config = new XMLConfiguration( fitsXmlConfig );
+      } else {
+          config = new XMLConfiguration( FITS_XML_DIR + FITS_CONFIG_FILE_NAME );
+      }
     } catch (ConfigurationException e) {
-      logger.fatal( "Error reading " + FITS_XML + "fits.xml: " + e.getClass().getName() );
-      throw new FitsConfigurationException( "Error reading " + FITS_XML + "fits.xml", e );
+      logger.fatal( "Error reading " + FITS_XML_DIR + FITS_CONFIG_FILE_NAME + ": " + e.getClass().getName() );
+      throw new FitsConfigurationException( "Error reading " + FITS_XML_DIR + FITS_CONFIG_FILE_NAME, e );
     }
     try {
       mapper = new FitsXmlMapper();
@@ -172,11 +207,13 @@ public class Fits {
       throw new FitsConfigurationException( "Error initializing " + consolidatorClass, e );
     }
 
-    toolbelt = new ToolBelt( FITS_XML + "fits.xml" );
+    toolbelt = new ToolBelt( config );
 
   }
 
-  public static void main( String[] args ) throws FitsException, IOException, ParseException, XMLStreamException {    
+  public static void main( String[] args ) throws FitsException, IOException, ParseException, XMLStreamException {
+
+    setFitsVersionFromFile();
 
     Options options = new Options();
     options.addOption( "i", true, "input file or directory" );
@@ -233,6 +270,41 @@ public class Fits {
 
     System.exit( 0 );
   }
+  
+  /*
+   * Called from either main() for stand-alone application usage or constructor
+   * when used by another program, this reads the properties file containing the
+   * current version of FITS.
+   * 
+   * Precondition of this method is that the static FITS_HOME has been set via
+   * an environment variable, being passed into a constructor, or is just the current directory.
+   */
+  private static void setFitsVersionFromFile() {
+
+      // If fits home is not an empty string and doesn't end with a file
+      // separator character, add one
+      if (FITS_HOME.length() > 0 && !FITS_HOME.endsWith( File.separator )) {
+          FITS_HOME = FITS_HOME + File.separator;
+      }
+
+      // get version from properties file and set in class
+      String versionPropFileFullPath = "";
+      if ( !StringUtils.isEmpty(FITS_HOME) ) {
+          versionPropFileFullPath = FITS_HOME;
+      }
+      
+      File versionFile = new File( versionPropFileFullPath + VERSION_PROPERTIES_FILE );
+      Properties versionProps = new Properties();
+      try {
+          versionProps.load(new FileInputStream(versionFile));
+          String version = versionProps.getProperty("build.version");
+          if (version != null && !version.isEmpty()) {
+              Fits.VERSION = version;
+          }
+      } catch (IOException e) {
+          System.err.println("Problem loading [" + VERSION_PROPERTIES_FILE + "]: " + "Cannot display FITS version information.");
+      }
+  }
 
   /**
    * Recursively processes all files in the directory.
@@ -267,12 +339,12 @@ public class Fits {
 					continue;
 				}
 				FitsOutput result = doSingleFile(f);
-				String outputFile = outputDir.getPath() + File.separator + f.getName() + ".fits.xml";
+				String outputFile = outputDir.getPath() + File.separator + f.getName() + "." + FITS_CONFIG_FILE_NAME;
 				File output = new File(outputFile);
 				if (output.exists()) {
 					int cnt = 1;
 					while (true) {
-						outputFile = outputDir.getPath() + File.separator + f.getName() + "-" + cnt + ".fits.xml";
+						outputFile = outputDir.getPath() + File.separator + f.getName() + "-" + cnt + "." + FITS_CONFIG_FILE_NAME;
 						output = new File(outputFile);
 						if (!output.exists()) {
 							break;
@@ -366,7 +438,7 @@ public class Fits {
 
     // initialize transformer for pretty print xslt
     TransformerFactory tFactory = TransformerFactory.newInstance();
-    String prettyPrintXslt = FITS_XML + "prettyprint.xslt";
+    String prettyPrintXslt = FITS_XML_DIR + "prettyprint.xslt";
     try {
       Templates template = tFactory.newTemplates( new StreamSource( prettyPrintXslt ) );
       transformer = template.newTransformer();
@@ -525,11 +597,25 @@ public class Fits {
       result.createStatistics( toolbelt, ext, t2 - t1 );
     }
 
-    for (Tool t : toolbelt.getTools()) {
-      t.resetOutput();
+    if (resetToolOutput) {
+    	for (Tool t : toolbelt.getTools()) {
+    		t.resetOutput();
+    	}
     }
 
     return result;
+  }
+  
+  /**
+   * Default is that the output of each tool is reset after gathering the results
+   * in the examine() method. This method should only be used for testing purposes.
+   * 
+   * @param resetToolOutput <code>false</code> will change default functionality of
+   * 		resetting each tool's output after running examine().
+   * @see edu.harvard.hul.ois.fits.tools.Tool#resetOutput()
+   */
+  protected void resetToolOutputAfterExaminingInput(boolean resetToolOutput) {
+	  this.resetToolOutput = resetToolOutput;
   }
 
   public ToolBelt getToolbelt() {

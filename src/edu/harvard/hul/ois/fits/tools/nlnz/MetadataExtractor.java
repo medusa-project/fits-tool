@@ -23,16 +23,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.StringReader;
 
+import org.apache.log4j.Logger;
 import org.jdom.Document;
 import org.jdom.JDOMException;
-import org.apache.log4j.Logger;
 
-import nz.govt.natlib.AdapterFactory;
-import nz.govt.natlib.adapter.DataAdapter;
-import nz.govt.natlib.fx.ParserContext;
-import nz.govt.natlib.fx.ParserListener;
-import nz.govt.natlib.meta.config.Config;
-import nz.govt.natlib.meta.harvester.DTDXmlParserListener;
 import edu.harvard.hul.ois.fits.Fits;
 import edu.harvard.hul.ois.fits.exceptions.FitsException;
 import edu.harvard.hul.ois.fits.exceptions.FitsToolException;
@@ -40,23 +34,42 @@ import edu.harvard.hul.ois.fits.tools.ToolBase;
 import edu.harvard.hul.ois.fits.tools.ToolInfo;
 import edu.harvard.hul.ois.fits.tools.ToolOutput;
 import edu.harvard.hul.ois.fits.tools.utils.XsltTransformMap;
+import nz.govt.natlib.AdapterFactory;
+import nz.govt.natlib.adapter.DataAdapter;
+import nz.govt.natlib.fx.ParserContext;
+import nz.govt.natlib.fx.ParserListener;
+import nz.govt.natlib.meta.config.Config;
+import nz.govt.natlib.meta.harvester.DTDXmlParserListener;
+import nz.govt.natlib.meta.log.LogManager;
 
 /**  The glue class for invoking the NLNZ Metadata Extractor under FITS.
  */
 public class MetadataExtractor extends ToolBase {
 	
     private final static String TOOL_NAME = "NLNZ Metadata Extractor";
-    private final static String TOOL_VERSION = "3.4GA";
-    private final static String TOOL_DATE = "12/21/2007";
+    private final static String TOOL_VERSION = "3.6GA";
+    private final static String TOOL_DATE = "06/05/2014";
     
-	public final static String nlnzFitsConfig = Fits.FITS_XML+"nlnz"+File.separator+"fits"+File.separator;
+	public static String nlnzFitsConfig;
 	private boolean enabled = true;
     private static final Logger logger = Logger.getLogger(MetadataExtractor.class);
+    
+    static {
+    	nlnzFitsConfig = Fits.FITS_XML_DIR+"nlnz"+File.separator+"fits"+File.separator;
+    	logger.debug("nlnzFitsConfig: " + nlnzFitsConfig);
+    }
 	
 	public MetadataExtractor() throws FitsException {	
         logger.debug ("Initializing MetadataExtractor");
 		info = new ToolInfo(TOOL_NAME,TOOL_VERSION,TOOL_DATE);
 		transformMap = XsltTransformMap.getMap(nlnzFitsConfig+"nlnz_xslt_map.xml");
+
+		// HACK: need to set custom ClassLoader in NLNZ Config class so that it can find class names on Class.forName() call.
+		ClassLoader cl = MetadataExtractor.class.getClassLoader();
+		Config.setClassLoader(cl); // customized Config class; NOT the one supplied by NLNZ
+		// Use custom logger so that NLNZ code doesn't log to System.out by default
+		// (see what happens in nz.govt.natlib.meta.log.LogManager source code)
+		LogManager.getInstance().addLog(new SLF4JLogger());
 	}
 
 	public ToolOutput extractInfo(File file) throws FitsToolException {
@@ -68,7 +81,8 @@ public class MetadataExtractor extends ToolBase {
 		// Make sure the Harvester System is initialized.
 		//Config.getInstance();
 		
-		Config.getInstance().setXMLBaseURL(Fits.FITS_XML+"nlnz");
+		String baseUrl = Fits.FITS_XML_DIR+"nlnz";
+		Config.getInstance().setXMLBaseURL(baseUrl);
 
 		// Get the appropriate adapter.
 		DataAdapter adapter = AdapterFactory.getInstance().getAdapter(file);		

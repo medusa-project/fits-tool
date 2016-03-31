@@ -23,6 +23,7 @@ import java.io.File;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamWriter;
 
+import org.custommonkey.xmlunit.XMLTestCase;
 import org.jdom.output.Format;
 import org.jdom.output.XMLOutputter;
 import org.junit.Test;
@@ -30,8 +31,6 @@ import org.junit.Test;
 import edu.harvard.hul.ois.fits.Fits;
 import edu.harvard.hul.ois.fits.FitsOutput;
 import edu.harvard.hul.ois.ots.schemas.DocumentMD.DocumentMD;
-
-import org.custommonkey.xmlunit.*;
 
 
 public class DocMDTest extends XMLTestCase {
@@ -58,6 +57,113 @@ public class DocMDTest extends XMLTestCase {
 			docmd.output(writer);
 		}
     	
+	}
+    
+	@Test
+	public void testWordDocPasswordProtected() throws Exception {	
+    	Fits fits = new Fits();
+    	File input = new File("testfiles/Word2003PasswordProtected.doc");
+    	
+    	
+    	FitsOutput fitsOut = fits.examine(input);
+    	
+		XMLOutputter serializer = new XMLOutputter(Format.getPrettyFormat());
+		serializer.output(fitsOut.getFitsXml(), System.out);
+		
+		DocumentMD docmd = (DocumentMD)fitsOut.getStandardXmlContent();
+		
+		if(docmd != null) {
+		docmd.setRoot(true);
+			XMLOutputFactory xmlof = XMLOutputFactory.newInstance();
+			XMLStreamWriter writer = xmlof.createXMLStreamWriter(System.out); 
+			
+			docmd.output(writer);
+		}
+    	
+	}
+    
+	@Test
+	public void testOpenOfficeDoc() throws Exception {	
+    	Fits fits = new Fits();
+    	File input = new File("testfiles/LibreODT-Ur-doc.odt");
+    	
+    	
+    	FitsOutput fitsOut = fits.examine(input);
+    	
+		XMLOutputter serializer = new XMLOutputter(Format.getPrettyFormat());
+		serializer.output(fitsOut.getFitsXml(), System.out);
+		
+		DocumentMD docmd = (DocumentMD)fitsOut.getStandardXmlContent();
+		
+		if(docmd != null) {
+		docmd.setRoot(true);
+			XMLOutputFactory xmlof = XMLOutputFactory.newInstance();
+			XMLStreamWriter writer = xmlof.createXMLStreamWriter(System.out); 
+			
+			docmd.output(writer);
+		}
+    	
+	}
+    
+	@Test
+	public void testOpenOfficeDocPasswordProtected() throws Exception {	
+    	Fits fits = new Fits();
+    	File input = new File("testfiles/LibreODT_protected.odt");
+    	
+    	
+    	FitsOutput fitsOut = fits.examine(input);
+    	
+		XMLOutputter serializer = new XMLOutputter(Format.getPrettyFormat());
+		serializer.output(fitsOut.getFitsXml(), System.out);
+		
+		DocumentMD docmd = (DocumentMD)fitsOut.getStandardXmlContent();
+		
+		if(docmd != null) {
+		docmd.setRoot(true);
+			XMLOutputFactory xmlof = XMLOutputFactory.newInstance();
+			XMLStreamWriter writer = xmlof.createXMLStreamWriter(System.out); 
+			
+			docmd.output(writer);
+		}
+    	
+	}
+    
+	@Test
+	public void testOpenOfficeDocUnparseableDate() throws Exception {	
+    	Fits fits = new Fits();
+    	File input = new File("testfiles/UnparseableDate.odt");
+    	
+    	
+    	FitsOutput fitsOut = fits.examine(input);
+    	
+		XMLOutputter serializer = new XMLOutputter(Format.getPrettyFormat());
+		serializer.output(fitsOut.getFitsXml(), System.out);
+		
+		DocumentMD docmd = (DocumentMD)fitsOut.getStandardXmlContent();
+		
+		if(docmd != null) {
+		docmd.setRoot(true);
+			XMLOutputFactory xmlof = XMLOutputFactory.newInstance();
+			XMLStreamWriter writer = xmlof.createXMLStreamWriter(System.out); 
+			
+			docmd.output(writer);
+		}
+    	
+	}
+    
+	@Test
+	public void testPdfA() throws Exception {
+		
+    	Fits fits = new Fits();
+    	File input = new File("testfiles/PDFa_equations.pdf");
+    	
+    	FitsOutput fitsOut = fits.examine(input);
+    	
+		// write to console
+		Fits.outputStandardCombinedFormat(fitsOut, System.out);
+		
+		// write to file
+		fitsOut.saveToDisk("test-generated-output/PDFa_equations_Output.xml");
 	}
 
 }

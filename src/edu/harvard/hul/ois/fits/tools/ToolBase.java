@@ -23,45 +23,48 @@ import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
 
-
 import javax.xml.transform.Templates;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamSource;
 
+import org.jdom.Document;
+import org.jdom.input.SAXBuilder;
+import org.jdom.transform.JDOMResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import edu.harvard.hul.ois.fits.exceptions.FitsToolException;
+import edu.harvard.hul.ois.fits.identity.ToolIdentity;
 import net.sf.saxon.Configuration;
 import net.sf.saxon.TransformerFactoryImpl;
 import net.sf.saxon.jdom.DocumentWrapper;
-
-import org.jdom.input.SAXBuilder;
-import org.jdom.transform.JDOMResult;
-import org.jdom.Document;
-import edu.harvard.hul.ois.fits.exceptions.FitsToolException;
-import edu.harvard.hul.ois.fits.identity.ToolIdentity;
 
 /** An abstract class implementing the Tool interface, the base
  *  for all FITS tools. 
  */
 public abstract class ToolBase implements Tool {
+
+	private static final Logger logger = LoggerFactory.getLogger( ToolBase.class );
 	
 	protected ToolInfo info = null;
 	protected ToolOutput output = null;
 	protected SAXBuilder saxBuilder;
-	protected TransformerFactory tFactory;
-    protected Hashtable<String,String> transformMap;
-    protected File inputFile;
-    protected long duration;
-    protected RunStatus runStatus;
-    protected String name;
+	protected long duration;
+	protected RunStatus runStatus;
+	protected Hashtable<String,String> transformMap;
+	private TransformerFactory tFactory;
+    private File inputFile;
+    private String name;
     
     private List<String> excludedExtensions;
     private List<String> includedExtensions;
     
-    private Exception caughtException;
+    private Throwable caughtThrowable;
 	
 	public ToolBase() throws FitsToolException {
 		info = new ToolInfo();
-		tFactory = TransformerFactory.newInstance("net.sf.saxon.TransformerFactoryImpl",null);
+		tFactory = TransformerFactory.newInstance("net.sf.saxon.TransformerFactoryImpl", ToolBase.class.getClassLoader());
 		saxBuilder = new SAXBuilder();
 		excludedExtensions = new ArrayList<String>();
 		includedExtensions = new ArrayList<String>();
@@ -252,8 +255,8 @@ public abstract class ToolBase implements Tool {
 	}
 	
 	/** Save an exception for reporting. */
-	public void setCaughtException (Exception e) {
-	    caughtException = e;
+	public void setCaughtException (Throwable e) {
+	    caughtThrowable = e;
 	}
 	
 	/** Append any reported exceptions to a master list.
@@ -262,9 +265,9 @@ public abstract class ToolBase implements Tool {
 	 *  @param exceptions   List of Exceptions. Exceptions may be appended
 	 *         to it by this call.
 	 */
-    public void addExceptions(List<Exception> exceptions) {
-        if (caughtException != null) {
-            exceptions.add (caughtException);
+    public void addExceptions(List<Throwable> exceptions) {
+        if (caughtThrowable != null) {
+            exceptions.add (caughtThrowable);
         }
     }
 
@@ -277,8 +280,10 @@ public abstract class ToolBase implements Tool {
 			//System.out.println(new java.sql.Time(time2.getTime()) +" FINISHED "+this.getClass());
 		} catch (FitsToolException e) {
 		    setCaughtException (e);
-			e.printStackTrace();
-			//System.err.println(e.getMessage());
+		    logger.error("Caught exception running tool: " + this.getName(), e);
+		} catch (Throwable e) {
+			setCaughtException (e);
+		    logger.error("Caught Throwable running tool: " + this.getName(), e);
 		}
 	}
 

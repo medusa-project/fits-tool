@@ -29,6 +29,7 @@ import org.jdom.Document;
 import org.jdom.input.SAXBuilder;
 import org.jdom.output.Format;
 import org.jdom.output.XMLOutputter;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -44,15 +45,23 @@ import org.custommonkey.xmlunit.*;
 /*
  * BROKEN TEST
  */
-
+@Ignore
 @RunWith(value=Parameterized.class)
 public class FitsOutputXmlTest extends XMLTestCase {
 	
     private FitsOutput expected;
     private FitsOutput actual;
-    private XMLOutputter serializer = new XMLOutputter(Format.getPrettyFormat());  	
+    private XMLOutputter serializer = new XMLOutputter(Format.getPrettyFormat());
+    
+    public FitsOutputXmlTest() {
+    	super();
+    	// must set output values if using this constructor
+//    	this.expected = ???;
+//    	this.actual = ???;
+    }
 
     public FitsOutputXmlTest(FitsOutput expected, FitsOutput value) {
+    	super();
         this.expected = expected;
         this.actual = value;
     }
