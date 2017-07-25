@@ -25,19 +25,41 @@ import javax.xml.stream.XMLStreamWriter;
 
 import org.jdom.output.Format;
 import org.jdom.output.XMLOutputter;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import edu.harvard.hul.ois.fits.Fits;
 import edu.harvard.hul.ois.fits.FitsOutput;
+import edu.harvard.hul.ois.fits.tests.AbstractLoggingTest;
 import edu.harvard.hul.ois.ots.schemas.XmlContent.XmlContent;
 
-public class VideoStdSchemaTest{
+public class VideoStdSchemaTest extends AbstractLoggingTest {
+	
+	/*
+	 *  Only one Fits instance is needed to run all tests.
+	 *  This also speeds up the tests.
+	 */
+	private static Fits fits;
+
+	@BeforeClass
+	public static void beforeClass() throws Exception {
+		// Set up FITS for entire class.
+		fits = new Fits();
+// Use the following two lines to turn on tool output
+//		File fitsConfigFile = new File("testfiles/properties/fits-full-with-tool-output.xml");
+//		fits = new Fits(null, fitsConfigFile);
+	}
+	
+	@AfterClass
+	public static void afterClass() {
+		fits = null;
+	}
 
     @Test  
 	public void testVideo_AVC() throws Exception {   
-    	Fits fits = new Fits();
+
     	File input = new File("testfiles/FITS-SAMPLE-44_1_1_4_4_4_6_1_1_2_3_1.mp4");
-    	
     	FitsOutput fitsOut = fits.examine(input);
     	
 		XMLOutputter serializer = new XMLOutputter(Format.getPrettyFormat());
@@ -57,9 +79,8 @@ public class VideoStdSchemaTest{
     
     @Test  
 	public void testVideo_DV() throws Exception {   
-    	Fits fits = new Fits();
+
     	File input = new File("testfiles/FITS-SAMPLE-26.mov");
-    	
     	FitsOutput fitsOut = fits.examine(input);
     	
 		XMLOutputter serializer = new XMLOutputter(Format.getPrettyFormat());
@@ -82,7 +103,8 @@ public class VideoStdSchemaTest{
     	
     	String inputFilename = "freeMXF-mxf1a.mxf";
     	String outputFilename = "test-generated-output/"+ inputFilename + "_Output.xml";
-    	
+
+    	// Here we want a specific fits.xml file so instantiate a new Fits class.
     	Fits fits = new Fits(null, new File("testfiles/properties/fits-full-with-tool-output.xml"));
     	File input = new File("testfiles/" + inputFilename);
     	

@@ -1,21 +1,13 @@
-/* 
- * Copyright 2009 Harvard University Library
- * 
- * This file is part of FITS (File Information Tool Set).
- * 
- * FITS is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * 
- * FITS is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- * 
- * You should have received a copy of the GNU Lesser General Public License
- * along with FITS.  If not, see <http://www.gnu.org/licenses/>.
- */
+//
+// Copyright (c) 2016 by The President and Fellows of Harvard College
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License. You may obtain a copy of the License at:
+// http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing, software distributed under the License is
+// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permission and limitations under the License.
+//
+
 package edu.harvard.hul.ois.fits.consolidation;
 
 import java.text.DateFormat;
@@ -39,9 +31,9 @@ import edu.harvard.hul.ois.fits.Fits;
 import edu.harvard.hul.ois.fits.FitsOutput;
 import edu.harvard.hul.ois.fits.exceptions.FitsConfigurationException;
 import edu.harvard.hul.ois.fits.identity.ExternalIdentifier;
-import edu.harvard.hul.ois.fits.identity.ToolIdentity;
 import edu.harvard.hul.ois.fits.identity.FitsIdentity;
 import edu.harvard.hul.ois.fits.identity.FormatVersion;
+import edu.harvard.hul.ois.fits.identity.ToolIdentity;
 import edu.harvard.hul.ois.fits.tools.Tool;
 import edu.harvard.hul.ois.fits.tools.ToolInfo;
 import edu.harvard.hul.ois.fits.tools.ToolOutput;
@@ -49,48 +41,65 @@ import edu.harvard.hul.ois.fits.tools.utils.XmlUtils;
 
 public class OISConsolidator implements ToolOutputConsolidator {
 
-    private static Namespace xsiNS = Namespace.getNamespace("xsi","http://www.w3.org/2001/XMLSchema-instance");        
+    private static Namespace xsiNS = Namespace.getNamespace("xsi","http://www.w3.org/2001/XMLSchema-instance");
 
-    private Logger logger = Logger.getLogger(this.getClass());
-    
+    private static Logger logger = Logger.getLogger(OISConsolidator.class);
+
 	private boolean reportConflicts;
 	private boolean displayToolOutput;
 	private Document formatTree;
-	
+	private Fits fits;
+
 	private final static int CONFLICT = 0;
 	private final static int SINGLE_RESULT = 1;
 	private final static int ALL_AGREE = 2;
-	
+
 	private final static String TRACK_ELEM_NM = "track";
-	
+
 	static private final String REAL_NUMBER = "^[-+]?\\d+(\\.\\d+)?$";
-	
+
 	static private final List<String> repeatableElements =  new ArrayList<String>(Arrays.asList("linebreak"));  ;
-	
+
 	private final static Namespace fitsNS = Namespace.getNamespace(Fits.XML_NAMESPACE);
-	
+
 	private enum STATUS_VALUE {
 		SINGLE_RESULT,
 		PARTIAL,
 		CONFLICT,
 		UNKNOWN;
 	}
-	
-	public OISConsolidator() throws FitsConfigurationException {
-		
-		reportConflicts = Fits.config.getBoolean("output.report-conflicts",true);
-		displayToolOutput = Fits.config.getBoolean("output.display-tool-output",false);
+
+// This class is instantiated by Reflection in the Fits class using a 1-arg constructor
+//	public OISConsolidator() throws FitsConfigurationException {
+//
+//		reportConflicts = Fits.config.getBoolean("output.report-conflicts",true);
+//		displayToolOutput = Fits.config.getBoolean("output.display-tool-output",false);
+//		SAXBuilder saxBuilder = new SAXBuilder();
+//		try {
+//			formatTree = saxBuilder.build(Fits.FITS_XML_DIR+"fits_format_tree.xml");
+//		} catch (Exception e) {
+//			throw new FitsConfigurationException("",e);
+//		}
+//		//fitsNS = Namespace.getNamespace(Fits.XML_NAMESPACE);
+//	}
+
+	public OISConsolidator(Fits fits) throws FitsConfigurationException {
+		if (fits == null || fits.getConfig() == null) {
+			throw new FitsConfigurationException("Fits parameter to constructor or fits.getConfig() cannot be null.");
+		}
+		this.fits = fits;
+		reportConflicts = fits.getConfig().getBoolean("output.report-conflicts",true);
+		displayToolOutput = fits.getConfig().getBoolean("output.display-tool-output",false);
 		SAXBuilder saxBuilder = new SAXBuilder();
 		try {
 			formatTree = saxBuilder.build(Fits.FITS_XML_DIR+"fits_format_tree.xml");
 		} catch (Exception e) {
 			throw new FitsConfigurationException("",e);
-		} 
-		//fitsNS = Namespace.getNamespace(Fits.XML_NAMESPACE);
+		}
 	}
-
+	
 	private Element findAnElement(List<ToolOutput> results, String xpath_query, boolean useChildren) {
-		for(ToolOutput result : results) {			
+		for(ToolOutput result : results) {
 			Document dom = result.getFitsXml();
 			try {
 				//only look at non null dom structures
@@ -110,12 +119,12 @@ public class OISConsolidator implements ToolOutputConsolidator {
 					}
 				}
 			} catch (JDOMException e) {
-				e.printStackTrace();
-			}	
+				logger.error("Error parsing XML with XPath expression.", e);
+			}
 		}
 		return null;
 	}
-	
+
 	/**
 	 * Removes null and unknown output from ToolOutput results
 	 * @param results
@@ -137,7 +146,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		}
 		return newResults;
 	}
-	
+
 	/**
 	 * Skips null identities and returns the first tools unknown Identities that are found
 	 * @param results
@@ -145,22 +154,22 @@ public class OISConsolidator implements ToolOutputConsolidator {
 	 */
 	private List<FitsIdentity> getFirstUnknownIdentity(List<ToolOutput> results) {
 		List<FitsIdentity> identities = new ArrayList<FitsIdentity>();
-		for(ToolOutput result : results) {	
+		for(ToolOutput result : results) {
 			//if result is null skip it
 			if(result == null) {
 				continue;
 			}
 			List<ToolIdentity> toolIdentities = result.getFileIdentity();
 			if(result.getTool().canIdentify() && toolIdentities != null && toolIdentities.size() > 0) {
-				for(ToolIdentity fileIdent : toolIdentities) {	
+				for(ToolIdentity fileIdent : toolIdentities) {
 					identities.add(new FitsIdentity(fileIdent));
-				}			
+				}
 				break;
 			}
 		}
 		return identities;
 	}
-	
+
 	/**
 	 * Skips null identities and returns the first tools unknown Identities that are found
 	 * @param results
@@ -168,25 +177,25 @@ public class OISConsolidator implements ToolOutputConsolidator {
 	 */
 	private List<FitsIdentity> getFirstPartialIdentity(List<ToolOutput> results) {
 		List<FitsIdentity> identities = new ArrayList<FitsIdentity>();
-		for(ToolOutput result : results) {	
+		for(ToolOutput result : results) {
 			//if result is null skip it
 			if(result == null) {
 				continue;
 			}
 			List<ToolIdentity> toolIdentities = result.getFileIdentity();
-			if(result.getTool().canIdentify() && toolIdentities != null && toolIdentities.size() > 0) {			
+			if(result.getTool().canIdentify() && toolIdentities != null && toolIdentities.size() > 0) {
 				if(isPartialIdentity(toolIdentities)) {
-					for(ToolIdentity fileIdent : toolIdentities) {	
+					for(ToolIdentity fileIdent : toolIdentities) {
 						identities.add(new FitsIdentity(fileIdent));
 					}
 					break;
 				}
-				
+
 			}
 		}
 		return identities;
 	}
-	
+
 	private boolean allIdentitiesAreGood(ToolOutput result) {
 		List<ToolIdentity> identities = result.getFileIdentity();
 		if(identities.size() == 0) {
@@ -203,11 +212,11 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		}
 		return true;
 	}
-	
+
 	private List<Element> mergeXmlResults(List<ToolOutput> results, Element element) {
 		//holder for consolidated elements
 		List<Element> consolidatedElements = new ArrayList<Element>();
-		//Get the element from each ToolOutput result 
+		//Get the element from each ToolOutput result
 		List<Element> fitsElements = new ArrayList<Element>();
 		for(ToolOutput result : results) {
 			Document dom = result.getFitsXml();
@@ -228,9 +237,9 @@ public class OISConsolidator implements ToolOutputConsolidator {
 				}
 			}
 			catch(JDOMException e) {
-				e.printStackTrace();
+				logger.error("Error parsing XML with XPath expression.", e);
 			}
-		}	
+		}
 
 		// To make FITS track-aware, we simply allow elements with the name of
 		// "track" to pass through and not be removed by the call to
@@ -238,18 +247,18 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		//
 		// TODO: Possibly externalize this in a property file, or revise
 		// removeUnknowns() to be track-aware
-		if(!element.getName().equals(TRACK_ELEM_NM)) {		
+		if(!element.getName().equals(TRACK_ELEM_NM)) {
 			//remove any unknown values
 			fitsElements = removeUnknowns(fitsElements);
 		}
-		
+
 		//if there are no elements after removing unknowns just return null
 		if(fitsElements.size() == 0) {
 			return fitsElements;
 		}
 		int equalityResult = testEquality(fitsElements);
 		if(equalityResult == ALL_AGREE) {
-			//since all tools agreed, or all conflicts could be resolved 
+			//since all tools agreed, or all conflicts could be resolved
 			//return the element without the identifying tool name and version
 			Element e = fitsElements.get(0);
 			//Commented out so tool name and version are always displayed
@@ -274,10 +283,10 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			//pick first value using preferred tool list
 			Element e = fitsElements.get(0);
 			consolidatedElements.add(e);
-		}			
-		return consolidatedElements;	
+		}
+		return consolidatedElements;
 	}
-	
+
 	private boolean isRepeatableElement(List<Element> fitsElements) {
 		String name = fitsElements.get(0).getName();
 		if(repeatableElements.contains(name)) {
@@ -287,13 +296,13 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			return false;
 		}
 	}
-	
+
 	private List<Element> consolidateFitsElements(List<Element> fitsElements) {
 		List<Element> conElements = new ArrayList<Element>();
 		for(Element e : fitsElements) {
 			ListIterator<Element> iter = conElements.listIterator();
 			boolean anyMatches = false;
-			while ( iter.hasNext() ) {			
+			while ( iter.hasNext() ) {
 				//compare e with conElement
 				Element conElement = iter.next();
 				if(conElement.getText().equalsIgnoreCase(e.getText())) {
@@ -308,20 +317,19 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		}
 		return conElements;
 	}
-	
+
 	private synchronized List<Element> removeUnknowns(List<Element> fitsElements) {
 		ListIterator<Element> iter = fitsElements.listIterator();
-		while ( iter.hasNext() ) {	
+		while ( iter.hasNext() ) {
 			Element e = iter.next();
-			if(e == null || e.getValue() == null || e.getText().length() == 0) {
+			if(e.getChildren().isEmpty() && (e == null || e.getValue() == null || e.getText().length() == 0)) {
 				//remove the element from the list
 				iter.remove();
-				//fitsElements.remove(e);
 			}
 		}
 		return fitsElements;
 	}
-	
+
 	private int testEquality(List<Element> fitsElements) {
 		if(fitsElements.size() == 1) {
 			return SINGLE_RESULT;
@@ -337,7 +345,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			//else check as digits
 			else if(eText.matches(REAL_NUMBER) && ee.getText().matches(REAL_NUMBER)) {
 				Double e_d = Double.parseDouble(eText);
-				Double ee_d =  Double.parseDouble(ee.getText());				
+				Double ee_d =  Double.parseDouble(ee.getText());
 				if(e_d.compareTo(ee_d) == 0) {
 					continue;
 				}
@@ -351,7 +359,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		}
 		return ALL_AGREE;
 	}
-	
+
 	private boolean parentContainsChild(Element parent, String childName) {
 		List<Element> children = parent.getChildren();
 		for(Element e : children) {
@@ -361,10 +369,10 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		}
 		return false;
 	}
-	
+
 	private List<ToolIdentity> getAllIdentities(List<ToolOutput> results) {
 		List<ToolIdentity> identities = new ArrayList<ToolIdentity>();
-		for(ToolOutput result : results) {			
+		for(ToolOutput result : results) {
 			if(result.getTool().canIdentify()) {
 				List<ToolIdentity> identList = result.getFileIdentity();
 				for(ToolIdentity ident : identList) {
@@ -374,7 +382,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		}
 		return identities;
 	}
-	
+
 	private boolean identitiesMatch(ToolIdentity a, FitsIdentity b) {
 		//if format and mimetype match
 		if(a.getFormat().equalsIgnoreCase(b.getFormat())
@@ -385,7 +393,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			return false;
 		}
 	}
-	
+
 	/**
 	 * merge from a to b
 	 * @return
@@ -395,17 +403,17 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		for(ExternalIdentifier xIdent : a.getExternalIds()) {
 			if(!b.hasExternalIdentifier(xIdent)) {
 				b.addExternalID(xIdent);
-			}	
+			}
 		}
 	}
-	
+
 	private void mergeFormatVersions(ToolIdentity a, FitsIdentity b) {
 		FormatVersion v = a.getFormatVersion();
 		if(v != null && v.getValue() != null && !b.hasFormatVersion(v)) {
 			b.addFormatVersion(v);
 		}
 	}
-	
+
 	private List<FitsIdentity> consolidateIdentities(List<ToolIdentity> identities) {
 		List<FitsIdentity> consolidatedIdentities = new ArrayList<FitsIdentity>();
 		for(ToolIdentity ident : identities) {
@@ -417,7 +425,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 				FitsIdentity identitySection = (FitsIdentity)iter.next();
 				if(identitiesMatch(ident,identitySection)) {
 					//Add external identifiers from ident to the existing item
-					mergeExternalIdentifiers(ident,identitySection);				
+					mergeExternalIdentifiers(ident,identitySection);
 					//add format versions from ident to the existing item
 					mergeFormatVersions(ident,identitySection);
 					//add reporting tools from ident to the existing item
@@ -427,7 +435,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 					break;
 				}
 				//if identities don't match check format tree for specific/generic formats
-				else {			
+				else {
 					int matchCondition = checkFormatTree(ident,identitySection);
 					if(matchCondition == -1) {
 						logger.debug(ident.getFormat() + " is more specific than " + identitySection.getFormat() + " tossing out " + identitySection.getToolName());
@@ -456,7 +464,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		}
 		return consolidatedIdentities;
 	}
-	
+
 	/**
 	 * Returns 1 if a  is more specific than b.  Returns -1 if b is more specific than a.
 	 * If neither is more specific then 0 is returned.
@@ -465,20 +473,20 @@ public class OISConsolidator implements ToolOutputConsolidator {
 	 * @return
 	 */
 	private int checkFormatTree(ToolIdentity a, FitsIdentity b) {
-		
+
 		//if formats are equal then just return
 		if(a.getFormat().equals(b.getFormat())) {
 			return 0;
 		}
-		
+
 		//check if a is more specific than b
 		Attribute a_attr = new Attribute("format",a.getFormat());
 		Attribute b_attr = new Attribute("format",b.getFormat());
-		
+
 		Element root = formatTree.getRootElement();
 		Element a_element = XmlUtils.getChildWithAttribute(root,a_attr);
 		Element b_element = XmlUtils.getChildWithAttribute(root,b_attr);
-		
+
 		if(a_element != null && b_element != null) {
 			//if a contains b's attribute, so b is more specific
 			if(XmlUtils.getChildWithAttribute(a_element,b_attr) != null) {
@@ -494,10 +502,10 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		}
 		return 0;
 	}
-	
+
 	private void filterToolOutput(FitsIdentity section, List<ToolOutput> results) {
 		ListIterator<ToolOutput> iter = results.listIterator();
-		while ( iter.hasNext() ) {			
+		while ( iter.hasNext() ) {
 			ToolOutput result = iter.next();
 			//if the identity section doesn't contain the results from the tool remove it
 			if(!section.hasOutputFromTool(result.getTool().getToolInfo())) {
@@ -505,8 +513,8 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			}
 		}
 	}
-	
-		
+
+
 	/* (non-Javadoc)
 	 * @see edu.harvard.hul.ois.fits.DataConsolidator#processResults(java.util.List)
 	 */
@@ -514,26 +522,28 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		//Remove any null results, or results from tools that have the capability to identify files,
 		// but couldn't identify the file.
 		List<ToolOutput> culledResults = cullResults(results);
-			
+
 		//start building the FITS xml document
 		Document mergedDoc = new Document();
-		Element fits = new Element("fits",fitsNS);
+		Element elem = new Element("fits",fitsNS);
 
-		fits.addNamespaceDeclaration(xsiNS);
-		fits.setAttribute(new Attribute("schemaLocation",Fits.XML_NAMESPACE+" "+Fits.externalOutputSchema, xsiNS));
-		
-		fits.setAttribute("version", Fits.VERSION);
-		DateFormat dateFormat = new SimpleDateFormat(); 
+		elem.addNamespaceDeclaration(xsiNS);
+		elem.setAttribute(new Attribute("schemaLocation",
+										Fits.XML_NAMESPACE + " " + fits.getExternalOutputSchema(),
+										xsiNS));
+
+		elem.setAttribute("version", Fits.VERSION);
+		DateFormat dateFormat = new SimpleDateFormat();
 		Date date = new Date();
-		fits.setAttribute("timestamp",dateFormat.format(date));
-		
+		elem.setAttribute("timestamp",dateFormat.format(date));
+
 		Element identificationsection = new Element("identification",fitsNS);
-		fits.addContent(identificationsection);
-		mergedDoc.addContent(fits);
-		
+		elem.addContent(identificationsection);
+		mergedDoc.addContent(elem);
+
 		String curSec;
 		String curSecName;
-		
+
 		//check identities
 			//one "identity" per unique combination of format and mimetype
 		List<ToolIdentity> identities = getAllIdentities(culledResults);
@@ -544,7 +554,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		if(identities.size() == 0) {
 			//try to find a partial identity match in the original results
 			identitySections = getFirstPartialIdentity(results);
-			if(identitySections.size() == 0)  {			
+			if(identitySections.size() == 0)  {
 				//get the first default unknown identity from original results
 				unknownStatus = true;
 				identitySections = getFirstUnknownIdentity(results);
@@ -552,7 +562,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			else {
 				partialStatus = true;
 			}
-			
+
 		}
 		else {
 			//else merge the known identities
@@ -565,13 +575,13 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			Attribute identMimeAttr = new Attribute("mimetype",identSection.getMimetype());
 			Attribute fitsToolName = new Attribute("toolname",identSection.getToolName());
 			Attribute fitsToolVersion = new Attribute("toolversion",identSection.getToolVersion());
-		
+
 			//set format and mimetype attributes
 			identElement.setAttribute(identFormatAttr);
 			identElement.setAttribute(identMimeAttr);
 			identElement.setAttribute(fitsToolName);
 			identElement.setAttribute(fitsToolVersion);
-			
+
 			//add reporting tools
 			for(ToolInfo info : identSection.getReportingTools()) {
 				Element tool = new Element("tool",fitsNS);
@@ -583,7 +593,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			 boolean toolsAgree = (identitySections.size() == 1 && identSection.getReportingTools().size() > 1);
 
 			//add format version
-			
+
 			List<FormatVersion> formatVersions = identSection.getFormatVersions();
 			String formatStatus = null;
 			if(formatVersions.size() > 1) {
@@ -603,7 +613,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 					identElement.addContent(identVersion);
 				}
 			}
-			
+
 			for(ExternalIdentifier xId : identSection.getExternalIdentifiers()) {
 				Element externalID = new Element("externalIdentifier",fitsNS);
 				ToolInfo xIdInfo = xId.getToolInfo();
@@ -627,14 +637,14 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			else if (!toolsAgree) {
 				status = STATUS_VALUE.UNKNOWN.name();
 			}
-			 
-			 if (status != "") 
+
+			 if (status != "")
 				 {
 						identificationsection.setAttribute("status",status);
 				 }
-			
+
 			identificationsection.addContent(identElement);
-			
+
 			//if conflicts are being reported continue, else break after 1 iteration
 			if(reportConflicts) {
 				continue;
@@ -643,13 +653,13 @@ public class OISConsolidator implements ToolOutputConsolidator {
 				break;
 			}
 		}
-					
+
 		//check fileinfo, do normal xml comparison.  Use all non-culled tool output
 		curSec = "/fits:fits/fits:fileinfo";
 		//curSec = "/fits/fileinfo";
 		curSecName = "fileinfo";
 		Element s = new Element(curSecName,fitsNS);
-		fits.addContent(s);
+		elem.addContent(s);
 		Element e = null;
 		while((e = findAnElement(culledResults,curSec,false)) != null) {
 			List<Element> fitsElements = mergeXmlResults(culledResults, e);
@@ -657,19 +667,19 @@ public class OISConsolidator implements ToolOutputConsolidator {
 				s.addContent(fitsElement);
 			}
 		}
-		
+
 		// Only use the output from tools that we're able to identify
 		// the file and are in the first identity section
 		if(identitySections.size() > 0) {
 			filterToolOutput(identitySections.get(0),culledResults);
 		}
-				
+
 		//check filestatus, do normal xml comparison
 		curSec = "/fits:fits/fits:filestatus";
 		//curSec = "/fits/filestatus";
 		curSecName = "filestatus";
 		s = new Element(curSecName,fitsNS);
-		fits.addContent(s);
+		elem.addContent(s);
 		e = null;
 		while((e = findAnElement(culledResults,curSec,false)) != null) {
 			List<Element> fitsElements = mergeXmlResults(culledResults, e);
@@ -677,7 +687,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 				s.addContent(fitsElement);
 			}
 		}
-					
+
 		//check metadata/child
 			//if child.getParent() !exist in mergedDoc, then create and add these elements to it.
 			//  else, add to existing section in mergedDoc
@@ -686,7 +696,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		//curSec = "/fits/metadata";
 		curSecName = "metadata";
 		s = new Element(curSecName,fitsNS);
-		fits.addContent(s);
+		elem.addContent(s);
 		e = null;
 		while((e = findAnElement(culledResults,curSec,true)) != null) {
 			Element eParent = e.getParentElement();
@@ -704,7 +714,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			}
 		}
 
-		
+
 		//Consolidate results from each tool
 		// Check for identical and unknown values for each field
 		// Check format tree for specific/generic formats
@@ -713,7 +723,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		// else
 			// pick value using preferred tool list ordering
 
-		
+
 		//while non empty results exist - check for elements in //identity, //info and //metadata (method for this)
 		//Start with first result that is not empty (method for this to grab any element from these sections)
 			//pull out an element
@@ -729,10 +739,10 @@ public class OISConsolidator implements ToolOutputConsolidator {
 					//use preferred ordering of tools
 			//add result or results if configured to report multiples when conflict exists
 			//to mergedDoc
-		
+
 			//continue with next element until result is empty
 			//continue with all results until all are empty.
-		
+
 		if(displayToolOutput) {
 			Element toolOutput = new Element("toolOutput",fitsNS);
 			for(ToolOutput output : results) {
@@ -748,29 +758,29 @@ public class OISConsolidator implements ToolOutputConsolidator {
 						}
 				}
 			}
-			fits.addContent(toolOutput);
+			elem.addContent(toolOutput);
 		}
-		
+
 		FitsOutput result = new FitsOutput(mergedDoc);
 		return result;
 	}
-	
+
 	private boolean isPartialIdentity(List<ToolIdentity> identities) {
 		ToolIdentity identity = identities.get(0);
 		if(identity != null) {
 			String mime = identity.getMime();
 			String format = identity.getFormat();
-			
+
 			boolean validMime = (mime != null && mime.length()>0);
 			boolean validFormat = (format != null && format.length()>0);
-			
-			if((validMime && validFormat) || 
-					(validMime && !validFormat) || 
+
+			if((validMime && validFormat) ||
+					(validMime && !validFormat) ||
 					(validFormat && !validMime)) {
-				if((mime.equals("application/octet-stream") 
+				if((mime.equals("application/octet-stream")
 						&& !format.equals("Unknown Binary"))
-						|| 
-						(format.equals("Unknown Binary") 
+						||
+						(format.equals("Unknown Binary")
 						&& !mime.equals("application/octet-stream"))) {
 					return true;
 				}

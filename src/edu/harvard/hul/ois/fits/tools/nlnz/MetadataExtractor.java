@@ -1,21 +1,13 @@
-/* 
-ll * Copyright 2009 Harvard University Library
- * 
- * This file is part of FITS (File Information Tool Set).
- * 
- * FITS is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * 
- * FITS is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- * 
- * You should have received a copy of the GNU Lesser General Public License
- * along with FITS.  If not, see <http://www.gnu.org/licenses/>.
- */
+//
+// Copyright (c) 2016 by The President and Fellows of Harvard College
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License. You may obtain a copy of the License at:
+// http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing, software distributed under the License is
+// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permission and limitations under the License.
+//
+
 package edu.harvard.hul.ois.fits.tools.nlnz;
 
 import java.io.ByteArrayOutputStream;
@@ -45,21 +37,25 @@ import nz.govt.natlib.meta.log.LogManager;
 /**  The glue class for invoking the NLNZ Metadata Extractor under FITS.
  */
 public class MetadataExtractor extends ToolBase {
-	
+
     private final static String TOOL_NAME = "NLNZ Metadata Extractor";
     private final static String TOOL_VERSION = "3.6GA";
     private final static String TOOL_DATE = "06/05/2014";
-    
-	public static String nlnzFitsConfig;
+
+    private static String nlnzFitsConfig;
 	private boolean enabled = true;
+    private Fits fits;
+
     private static final Logger logger = Logger.getLogger(MetadataExtractor.class);
-    
+
     static {
     	nlnzFitsConfig = Fits.FITS_XML_DIR+"nlnz"+File.separator+"fits"+File.separator;
     	logger.debug("nlnzFitsConfig: " + nlnzFitsConfig);
     }
-	
-	public MetadataExtractor() throws FitsException {	
+
+	public MetadataExtractor(Fits fits) throws FitsException {
+		super();
+		this.fits = fits;
         logger.debug ("Initializing MetadataExtractor");
 		info = new ToolInfo(TOOL_NAME,TOOL_VERSION,TOOL_DATE);
 		transformMap = XsltTransformMap.getMap(nlnzFitsConfig+"nlnz_xslt_map.xml");
@@ -80,64 +76,35 @@ public class MetadataExtractor extends ToolBase {
 
 		// Make sure the Harvester System is initialized.
 		//Config.getInstance();
-		
+
 		String baseUrl = Fits.FITS_XML_DIR+"nlnz";
 		Config.getInstance().setXMLBaseURL(baseUrl);
 
 		// Get the appropriate adapter.
-		DataAdapter adapter = AdapterFactory.getInstance().getAdapter(file);		
-		
+		DataAdapter adapter = AdapterFactory.getInstance().getAdapter(file);
+
 		//The adapter's DTD to use for output
 		String outDTD = adapter.getOutputType();
 
-		//output stream to hold raw output from adapter 
+		//output stream to hold raw output from adapter
 		ByteArrayOutputStream adapterOutput = new ByteArrayOutputStream(2048);
-		
+
 		//holder for the transformed adapter output
 		//ByteArrayOutputStream tAdapterOutput = new ByteArrayOutputStream(2048);
-		
+
 		// Set up the parser context and listener to hold the adapter output
 		ParserContext pContext = new ParserContext();
-		
+
 		ParserListener listener= new DTDXmlParserListener(adapterOutput, outDTD == null ? null
 				: Config.getInstance().getXMLBaseURL() + "/" + outDTD);
 		pContext.addListener(listener);
-		
+
 		// Attempt to harvest the metadata.
-		try {				
+		try {
 			// Extract the metadata.
 			adapter.adapt(file, pContext);
-
-			//transformer to convert raw output to nlnz_presmet format
-			//TransformProcessor transformer = TransformProcessor.getInstance(outDTD, "nlnz_presmet.xsd");
-						
-			//get the adapter output as a byte array
-			//byte[] adapterByteOutput = adapterOutput.toByteArray();
-			
-			//temporary to get output prior to nlnz xslt conversion
-			//Document tmpDom = saxBuilder.build(new StringReader(new String(adapterByteOutput)));
-			//XmlUtils.printToConsole(tmpDom);
-		
-			//transform adapter output byte array
-			//transformer.transform(new ByteArrayInputStream(adapterByteOutput),tAdapterOutput);
-			
-			//convert the transformed output to a dom object
-			//InputSource is = new InputSource(new ByteArrayInputStream(tAdapterOutput.toByteArray()));
-			//is.setEncoding("UTF-8");
-			
 			dom = saxBuilder.build(new StringReader(adapterOutput.toString()));
-			
-			/*
-			//convert the adapter byte array output to a dom object  
-			is = new InputSource(new ByteArrayInputStream(adapterByteOutput));
-			is.setEncoding("UTF-8");
-			try {
-				rawDom = docBuilder.parse(is);
-			} catch (SAXException e) {
-				e.printStackTrace();
-			}*/
-					
-		} 
+		}
 		catch (JDOMException e) {
             logger.error("Error parsing NLNZ Metadata Extractor XML output: " + e.getClass().getName());
 			throw new FitsToolException("Error parsing NLNZ Metadata Extractor XML output",e);
@@ -145,7 +112,7 @@ public class MetadataExtractor extends ToolBase {
 		catch (Exception e) {
 			// harvesting metadata failed
             logger.error("NLNZ Metadata Extractor error while harvesting file: " + e.getClass().getName());
-			throw new FitsToolException("NLNZ Metadata Extractor error while harvesting file "+file.getName(),e);		
+			throw new FitsToolException("NLNZ Metadata Extractor error while harvesting file "+file.getName(),e);
 		}
 		finally {
 			//done with the adapter output streams so close them
@@ -170,10 +137,10 @@ public class MetadataExtractor extends ToolBase {
 				}
 			}
 		}
-		
+
 		//XmlUtils.printToConsole(dom);
-		
-		output = new ToolOutput(this,fitsXml,dom);
+
+		output = new ToolOutput(this,fitsXml,dom, fits);
 		duration = System.currentTimeMillis()-startTime;
         logger.debug("MetadataExtractor.extractInfo finished on " + file.getName());
 		runStatus = RunStatus.SUCCESSFUL;
@@ -182,9 +149,9 @@ public class MetadataExtractor extends ToolBase {
 	/*
 	public boolean isIdentityKnown(FileIdentity identity) {
 		if(identity == null
-				|| identity.getMime() == null 
+				|| identity.getMime() == null
 				|| identity.getMime().length() == 0
-				|| identity.getFormat() == null 
+				|| identity.getFormat() == null
 				|| identity.getFormat().length() == 0) {
 			return false;
 		}
@@ -197,12 +164,12 @@ public class MetadataExtractor extends ToolBase {
 			return true;
 		}
 	}*/
-	
+
 	public boolean isEnabled() {
 		return enabled;
 	}
 
 	public void setEnabled(boolean value) {
-		enabled = value;		
+		enabled = value;
 	}
 }

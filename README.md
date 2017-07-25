@@ -7,7 +7,11 @@ FITS is a Java program and requires Java version 1.7 or higher. To find out your
 
 Installation
 ------------
-Download the latest official release from our Downloads page. If this is your first time downloading FITS, create a directory for FITS, for example:
+Download the latest official release from our [Downloads](http://fitstool.org/downloads) page.
+
+**IMPORTANT NOTE**: The code on this GitHub site is not meant for direct installation since it does NOT include the necessary fits.jar file (which is a primary build artifact of this project). If you want to use this GitHub site for installing FITS, you must first download (or Git clone) the code then build the project using the Ant 'release' target.
+
+If this is your first time downloading FITS, create a directory for FITS, for example:
 
     On Windows: C:\Program Files\Fits
     On Mac OS X: /Applications/Fits
@@ -15,7 +19,7 @@ Download the latest official release from our Downloads page. If this is your fi
 
 Extract the contents of your ZIP file to your FITS directory. You should end up with a another directory under your top-level FITS directory that has a version number embedded in it, for example on Windows:
 
-    C:\Program Files\Fits\fits-0.9.0
+    C:\Program Files\Fits\fits-1.0.0
 
 Running FITS
 ------------
@@ -46,6 +50,19 @@ Here are a couple examples of running FITS to get you started. These are relativ
     Run FITS against its release text file saving the FITS output to a file: fits.bat -i RELEASE.txt -o myoutput.txt
     Output the technical metadata for FITS' release text file in the TextMD format to the terminal: fits.bat -i RELEASE.txt -x
     Output the FITS output plus technical metadata for FITS' release text file in the TextMD format to the terminal: fits.bat -i RELEASE.txt -xc
+
+Logging
+-------
+Whether using the default log4j.properties configuration file contained within the application deployment or configuring an external log4j.properties file, the default logging output file, fits.log, is configured to be written to the directory from which the FITS is launched. This can be modified by finding the following line within the log4j.properties file in the top-level directory of the FITS deployment:
+
+    log4j.appender.FILE.File = ./fits.log
+
+Modify the path to fits.log to have this log file written to a different place on the file system.
+To use a log4j.properties file external to the FITS deployment, when launching FITS add the following property to the deployment script:
+
+    -Dlog4j.configuration=/path/to/log4j.properties
+
+For more information on configuring the verboseness of logging using ERROR, WARN, INFO, DEBUG, see the [log4j site](http://logging.apache.org/log4j/1.2/)
 
 Using FITS Java API
 -------------------

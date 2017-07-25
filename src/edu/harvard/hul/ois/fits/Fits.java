@@ -1,21 +1,13 @@
-/* 
- * Copyright 2009 Harvard University Library
- * 
- * This file is part of FITS (File Information Tool Set).
- * 
- * FITS is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * 
- * FITS is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- * 
- * You should have received a copy of the GNU Lesser General Public License
- * along with FITS.  If not, see <http://www.gnu.org/licenses/>.
- */
+//
+// Copyright (c) 2016 by The President and Fellows of Harvard College
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License. You may obtain a copy of the License at:
+// http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing, software distributed under the License is
+// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permission and limitations under the License.
+//
+
 package edu.harvard.hul.ois.fits;
 
 import java.io.ByteArrayInputStream;
@@ -25,6 +17,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.reflect.Constructor;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -72,32 +67,31 @@ import edu.harvard.hul.ois.ots.schemas.XmlContent.XmlContent;
  */
 public class Fits {
 
-  private static Logger logger;
-
   public static volatile String FITS_HOME;
   public static String FITS_XML_DIR;
   public static String FITS_TOOLS_DIR;
-  public static String FITS_LIB_DIR;
-  public static XMLConfiguration config;
-  public static FitsXmlMapper mapper;
-  public static boolean validateToolOutput;
-  public static boolean enableStatistics;
-  public static String externalOutputSchema;
-  public static String internalOutputSchema;
-  public static int maxThreads = 20; // GDM 16-Nov-2012
-  public static final String XML_NAMESPACE = "http://hul.harvard.edu/ois/xml/ns/fits/fits_output";
   public static String VERSION = "<unknown>";
+  public static final String XML_NAMESPACE = "http://hul.harvard.edu/ois/xml/ns/fits/fits_output";
+  
+  private static boolean traverseDirs;
+  private static XMLOutputFactory xmlOutputFactory = XMLOutputFactory.newInstance();
 
   private static final String FITS_CONFIG_FILE_NAME = "fits.xml";
-  private static String VERSION_PROPERTIES_FILE = "version.properties";
+  private static final String VERSION_PROPERTIES_FILE = "version.properties";
+  
+  private XMLConfiguration config;
+  private FitsXmlMapper mapper;
+  private boolean enableStatistics;
+  private String externalOutputSchema;
+  private String internalOutputSchema;
+  private boolean validateToolOutput;
+  private int maxThreads = 20;
   private ToolOutputConsolidator consolidator;
-  private static XMLOutputFactory xmlOutputFactory = XMLOutputFactory.newInstance();
   private ToolBelt toolbelt;
   private boolean resetToolOutput = true; // should always be true except for unit tests
+  
+  private static Logger logger;
 
-  private static boolean traverseDirs;
-  
-  
     static {
         // set FITS_HOME from environment variable if it exists
         FITS_HOME = System.getenv( "FITS_HOME" );
@@ -110,7 +104,7 @@ public class Fits {
   /**
    * Default, no-arg constructor. FITS configuration file expected in default location with
    * FITS_HOME either default location or set by environment variable.
-   * 
+   *
    * @throws FitsConfigurationException If there is a problem configuring FITS.
    */
   public Fits() throws FitsConfigurationException {
@@ -118,8 +112,8 @@ public class Fits {
   }
 
   /**
-   * Constructor with path to FITS alternate .
-   * 
+   * Constructor with path to alternate FITS_HOME.
+   *
    * @param fits_home Full path to home directory of FITS installation.
    *        NOTE: If FITS_HOME set as environment variable this argument has no effect.
    * @throws FitsConfigurationException If there is a problem configuring FITS.
@@ -130,7 +124,7 @@ public class Fits {
 
   /**
    * Constructor with alternate FITS_HOME and alternate FITS configuration file.
-   * 
+   *
    * @param fits_home Full path to home directory of FITS installation.
    *        NOTE: If FITS_HOME set as environment variable this argument has no effect.
    * @param fitsXmlConfig File containing FITS configuration.
@@ -146,20 +140,56 @@ public class Fits {
         FITS_HOME = fits_home;
       }
     }
-    
+
     setFitsVersionFromFile();
 
     FITS_XML_DIR = FITS_HOME + "xml" + File.separator;
     FITS_TOOLS_DIR = FITS_HOME + "tools" + File.separator;
-    FITS_LIB_DIR = FITS_HOME + "lib" + File.separator;
 
-    // Set up logging.
-    // Now using an explicit properties file, because otherwoise DROID will
-    // hijack it, and it's cleaner this way anyway.
-    File log4jProperties = new File(FITS_HOME + "log4j.properties");
-    System.setProperty( "log4j.configuration", log4jProperties.toURI().toString());
- 
+    // Set up logging explicitly so one of the tools aggregated into FITS does not circumvent this.
+    // This process also makes initialization a more flexible by allowing a path to a file without a scheme.
+    // Log4j seems to want a valid URI with a scheme value for proper initialization.
+    // If the property is just a path then convert it to a URI with a scheme and
+    // set it back into the system property.
+    //
+    // First look for a system property (the Log4j preferred way of configuration) at the Log4j expected value, "log4j.configuration".
+    // This value can be either a file path, file protocol (e.g. - file:/path/to/log4j.properties), or a URL (http://some/server/log4j.properties).
+    // If this value either is does not exist or is not valid, the default file that comes with FITS will be used for initialization.
+    String log4jSystemProp = System.getProperty("log4j.configuration");
+    URI log4jUri = null;
+    if (log4jSystemProp != null) {
+        try {
+            log4jUri = new URI(log4jSystemProp);
+            // log4j system needs a scheme in the URI so convert to file if necessary.
+            if (null == log4jUri.getScheme()) {
+                File log4jProperties = new File(log4jSystemProp);
+                if (log4jProperties.exists() && log4jProperties.isFile()) {
+                    log4jUri = log4jProperties.toURI();
+                } else {
+                    // No scheme and not a file - yikes!!! Let's bail and use fall-back file.
+                    log4jUri = null;
+                    throw new URISyntaxException(log4jSystemProp, "Not a valid file");
+                }
+            }
+        } catch (URISyntaxException e) {
+            // fall back to FITS-supplied file
+            System.err.println("Unable to load log4j.properties file: " + log4jSystemProp + " -- reason: " + e.getReason());
+            System.err.println("Falling back to default log4j.properties file: " + FITS_HOME + "log4j.properties");
+        }
+    }
+    // Only set up logging with FITS default logging configuration if
+    // either the System property is null or exception was thrown creating URI.
+    if (log4jUri == null) {
+        File log4jProperties = new File(FITS_HOME + "log4j.properties");
+        log4jUri = log4jProperties.toURI();
+    }
+
+    // Even if set, reset logging System property to ensure it's in a URI format
+    // with scheme so the log4j framework can initialize.
+    System.setProperty( "log4j.configuration", log4jUri.toString());
+
     logger = Logger.getLogger( this.getClass() );
+    logger.info("Logging initialized with: " + log4jUri.toString());
     try {
       if ( fitsXmlConfig != null ) {
           config = new XMLConfiguration( fitsXmlConfig );
@@ -199,15 +229,17 @@ public class Fits {
     }
     logger.debug( "Maximum threads = " + maxThreads );
 
-    String consolidatorClass = config.getString( "output.dataConsolidator[@class]" );
+    String consolidatorClassFullyQualifiedName = config.getString( "output.dataConsolidator[@class]" );
     try {
-      Class<?> c = Class.forName( consolidatorClass );
-      consolidator = (ToolOutputConsolidator) c.newInstance();
+		// Instantiate the Consolidator class using Reflection by passing Fits into the constructor.
+		Class<?> c = Class.forName(consolidatorClassFullyQualifiedName);
+		Constructor<?> ctor = c.getConstructor(Fits.class);
+		consolidator = (ToolOutputConsolidator)ctor.newInstance(this);
     } catch (Exception e) {
-      throw new FitsConfigurationException( "Error initializing " + consolidatorClass, e );
+      throw new FitsConfigurationException( "Error initializing " + consolidatorClassFullyQualifiedName, e );
     }
 
-    toolbelt = new ToolBelt( config );
+    toolbelt = new ToolBelt( config, this );
 
   }
 
@@ -270,12 +302,12 @@ public class Fits {
 
     System.exit( 0 );
   }
-  
+
   /*
    * Called from either main() for stand-alone application usage or constructor
    * when used by another program, this reads the properties file containing the
    * current version of FITS.
-   * 
+   *
    * Precondition of this method is that the static FITS_HOME has been set via
    * an environment variable, being passed into a constructor, or is just the current directory.
    */
@@ -292,7 +324,7 @@ public class Fits {
       if ( !StringUtils.isEmpty(FITS_HOME) ) {
           versionPropFileFullPath = FITS_HOME;
       }
-      
+
       File versionFile = new File( versionPropFileFullPath + VERSION_PROPERTIES_FILE );
       Properties versionProps = new Properties();
       try {
@@ -300,6 +332,7 @@ public class Fits {
           String version = versionProps.getProperty("build.version");
           if (version != null && !version.isEmpty()) {
               Fits.VERSION = version;
+              FitsOutput.setFitsVersion(version);
           }
       } catch (IOException e) {
           System.err.println("Problem loading [" + VERSION_PROPERTIES_FILE + "]: " + "Cannot display FITS version information.");
@@ -308,7 +341,7 @@ public class Fits {
 
   /**
    * Recursively processes all files in the directory.
-   * 
+   *
    * @param intputFile
    * @param useStandardSchemas
    * @throws IOException
@@ -319,17 +352,17 @@ public class Fits {
 		if(inputDir.listFiles() == null) {
 			return;
 		}
-		
+
 		logger.info("Processing directory " + inputDir.getAbsolutePath());
-		
+
 		for (File f : inputDir.listFiles()) {
 
 			if(f == null || !f.exists() || !f.canRead()) {
 				continue;
 			}
-			
+
 			logger.info("processing " + f.getPath());
-			
+
 			if (f.isDirectory() && traverseDirs) {
 				doDirectory(f, outputDir, useStandardSchemas, standardCombinedFormat);
 			} else if (f.isFile()) {
@@ -361,7 +394,7 @@ public class Fits {
   /**
    * processes a single file and outputs to the provided output location.
    * Outputs to standard out if outputLocation is null
-   * 
+   *
    * @param inputFile
    * @param outputLocation
    * @param useStandardSchemas
@@ -376,7 +409,7 @@ public class Fits {
     FitsOutput result = this.examine( inputFile );
     if (result.getCaughtExceptions().size() > 0) {
       for (Exception e : result.getCaughtExceptions()) {
-        System.err.println( "Warning: " + e.getMessage() );
+        logger.error( "Warning: " + e.getMessage(), e );
       }
     }
     return result;
@@ -432,12 +465,14 @@ public class Fits {
   public static void outputStandardSchemaXml( FitsOutput fitsOutput, OutputStream out ) throws XMLStreamException,
       IOException {
     XmlContent xml = fitsOutput.getStandardXmlContent();
+	FitsMetadataElement fileNameElement = fitsOutput.getMetadataElement("filename");
+	String inputFilename = fileNameElement == null ? null : fileNameElement.getValue();
 
     // create an xml output factory
     Transformer transformer = null;
 
     // initialize transformer for pretty print xslt
-    TransformerFactory tFactory = TransformerFactory.newInstance();
+    TransformerFactory tFactory = TransformerFactory.newInstance("net.sf.saxon.TransformerFactoryImpl", null);
     String prettyPrintXslt = FITS_XML_DIR + "prettyprint.xslt";
     try {
       Templates template = tFactory.newTemplates( new StreamSource( prettyPrintXslt ) );
@@ -469,14 +504,14 @@ public class Fits {
         out.flush();
 
       } catch (Exception e) {
-        System.err.println( "error converting output to a standard schema format" );
+        System.err.println( "error converting output to a standard schema format for input file: [" + inputFilename + "]");
       } finally {
         xmlOutStream.close();
         xsltOutStream.close();
       }
 
     } else {
-      System.err.println( "Error: output cannot be converted to a standard schema format for this file" );
+      System.err.println( "Error: output cannot be converted to a standard schema format for input file: [" + inputFilename + "]");
     }
   }
 
@@ -484,33 +519,6 @@ public class Fits {
     HelpFormatter formatter = new HelpFormatter();
     formatter.printHelp( "fits", opts );
   }
-
-  /*
-   * ORIGINAL EXAMINE METHOD WITHOUT THREADS
-   * 
-   * public FitsOutput examineOriginal(File input) throws FitsException {
-   * if(!input.exists()) { throw new
-   * FitsConfigurationException(input+" does not exist or is not readable"); }
-   * 
-   * List<ToolOutput> toolResults = new ArrayList<ToolOutput>();
-   * 
-   * //run file through each tool, catching exceptions thrown by tools
-   * List<Exception> caughtExceptions = new ArrayList<Exception>(); String path
-   * = input.getPath().toLowerCase(); String ext =
-   * path.substring(path.lastIndexOf(".")+1); for(Tool t : toolbelt.getTools())
-   * { if(t.isEnabled()) { if(!t.hasExcludedExtension(ext)) { try { ToolOutput
-   * tOutput = t.extractInfo(input); toolResults.add(tOutput); } catch(Exception
-   * e) { caughtExceptions.add(e); } } } }
-   * 
-   * 
-   * // consolidate the results into a single DOM FitsOutput result =
-   * consolidator.processResults(toolResults);
-   * result.setCaughtExceptions(caughtExceptions);
-   * 
-   * for(Tool t: toolbelt.getTools()) { t.resetOutput(); }
-   * 
-   * return result; }
-   */
 
   public FitsOutput examine( File input ) throws FitsException {
     long t1 = System.currentTimeMillis();
@@ -579,7 +587,7 @@ public class Fits {
       try {
         thread.join();
       } catch (InterruptedException e) {
-        e.printStackTrace();
+        logger.error("Caught exception while waiting for tools to finish running: " + e.getMessage(), e);
       }
     }
 
@@ -605,11 +613,11 @@ public class Fits {
 
     return result;
   }
-  
+
   /**
    * Default is that the output of each tool is reset after gathering the results
    * in the examine() method. This method should only be used for testing purposes.
-   * 
+   *
    * @param resetToolOutput <code>false</code> will change default functionality of
    * 		resetting each tool's output after running examine().
    * @see edu.harvard.hul.ois.fits.tools.Tool#resetOutput()
@@ -621,7 +629,27 @@ public class Fits {
   public ToolBelt getToolbelt() {
     return toolbelt;
   }
+  
+  public XMLConfiguration getConfig() {
+	  return config;
+  }
+  
+  public FitsXmlMapper getFitsXmlMapper() {
+	  return mapper;
+  }
+  
+  public String getExternalOutputSchema() {
+	  return externalOutputSchema;
+  }
 
+  public String getInternalOutputSchema() {
+	  return internalOutputSchema;
+  }
+  
+  public boolean validateToolOutput() {
+	  return validateToolOutput;
+  }
+  
   /* Count up all the threads that are still running */
   private int countActiveTools( List<Thread> threads ) {
     int count = 0;

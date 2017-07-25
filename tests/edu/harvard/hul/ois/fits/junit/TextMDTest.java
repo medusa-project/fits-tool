@@ -25,21 +25,37 @@ import javax.xml.stream.XMLStreamWriter;
 
 import org.jdom.output.Format;
 import org.jdom.output.XMLOutputter;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import edu.harvard.hul.ois.fits.Fits;
 import edu.harvard.hul.ois.fits.FitsOutput;
+import edu.harvard.hul.ois.fits.tests.AbstractLoggingTest;
 import edu.harvard.hul.ois.ots.schemas.TextMD.TextMD;
 
-import org.custommonkey.xmlunit.*;
 
-
-public class TextMDTest extends XMLTestCase {
-
+public class TextMDTest extends AbstractLoggingTest {
     
+	/*
+	 *  Only one Fits instance is needed to run all tests.
+	 *  This also speeds up the tests.
+	 */
+	private static Fits fits;
+
+	@BeforeClass
+	public static void beforeClass() throws Exception {
+		// Set up FITS for entire class.
+		fits = new Fits();
+	}
+	
+	@AfterClass
+	public static void afterClass() {
+		fits = null;
+	}
+
 	@Test
 	public void testTextMD() throws Exception {	
-    	Fits fits = new Fits();
     	File input = new File("testfiles/utf16.txt");
     	
     	
@@ -49,13 +65,35 @@ public class TextMDTest extends XMLTestCase {
 		serializer.output(fitsOut.getFitsXml(), System.out);
 		
 		TextMD textmd = (TextMD)fitsOut.getStandardXmlContent();
-		textmd.setRoot(true);
 		
 		XMLOutputFactory xmlof = XMLOutputFactory.newInstance();
 		XMLStreamWriter writer = xmlof.createXMLStreamWriter(System.out); 
-		
-		textmd.output(writer);
+
+		if (textmd != null) {
+			textmd.setRoot(true);
+			textmd.output(writer);
+		}
+	}
+    
+	@Test
+	public void testCsv() throws Exception {	
+    	File input = new File("testfiles/random_data.csv");
     	
+    	
+    	FitsOutput fitsOut = fits.examine(input);
+    	
+		XMLOutputter serializer = new XMLOutputter(Format.getPrettyFormat());
+		serializer.output(fitsOut.getFitsXml(), System.out);
+		
+		TextMD textmd = (TextMD)fitsOut.getStandardXmlContent();
+		
+		XMLOutputFactory xmlof = XMLOutputFactory.newInstance();
+		XMLStreamWriter writer = xmlof.createXMLStreamWriter(System.out); 
+
+		if (textmd != null) {
+			textmd.setRoot(true);
+			textmd.output(writer);
+		}
 	}
 
 }
